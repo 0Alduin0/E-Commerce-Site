@@ -1,0 +1,28 @@
+# ---- Genel ----
+.DS_Store
+*.log
+
+# ---- Ortam değişkenleri (sırlar) ----
+.env
+.env.local
+.env.*.local
+!.env.example
+
+# ---- Backend (Python) ----
+backend/venv/
+backend/.venv/
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# ---- Frontend (Next.js / Node) ----
+frontend/node_modules/
+frontend/.next/
+frontend/out/
+frontend/build/
+frontend/.vercel/
+node_modules/
+.next/
