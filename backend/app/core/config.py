@@ -14,6 +14,10 @@ class Settings(BaseSettings):
     PROJECT_NAME: str = "E-Ticaret API"
     ENVIRONMENT: str = "development"
 
+    # Veritabanı. Geliştirmede SQLite; production'da PostgreSQL (Railway) URL'i .env'den gelir.
+    # Örn. PostgreSQL: postgresql+psycopg://user:pass@host:5432/dbname
+    DATABASE_URL: str = "sqlite:///./ecommerce.db"
+
     # CORS: virgülle ayrılmış izinli origin listesi (geliştirmede sadece localhost:3000)
     FRONTEND_URL: str = "http://localhost:3000"
 

@@ -116,12 +116,12 @@ Amaç: backend ve frontend'i ayağa kaldırıp birbirleriyle konuşturmak.
 ### Faz 2 — Veritabanı ve Veri Modelleri
 Amaç: e-ticaretin temel verisini modellemek. Projenin omurgası.
 
-- [ ] Lokalde PostgreSQL kur (veya geliştirmede SQLite ile başla, sonra PostgreSQL'e geç).
-- [ ] SQLModel ile temel modelleri tanımla: User, Product, Category, Order, OrderItem.
-- [ ] İlişkileri kur: bir sipariş bir kullanıcıya bağlı, birden çok ürün içerir; ürün bir kategoriye ait.
-- [ ] Veritabanı bağlantısını ve session yönetimini FastAPI'ye ekle.
-- [ ] Birkaç örnek ürünü elle ekleyip veritabanının çalıştığını doğrula.
-- [ ] Migration aracı (Alembic) kur ki şema değişiklikleri kontrollü ilerlesin.
+- [x] Geliştirmede SQLite ile başlandı (`sqlite:///./ecommerce.db`); PostgreSQL'e geçiş `.env`'deki `DATABASE_URL` ile yapılır (Faz 9).
+- [x] SQLModel modelleri: User, Category, Product, **ProductVariant**, Order, OrderItem. Varyant kararı gereği stok+fiyat `ProductVariant`'ta; para `Numeric(10,2)`.
+- [x] İlişkiler kuruldu: Product↔Category, Product↔ProductVariant (cascade delete), Order↔OrderItem (cascade), OrderItem→ProductVariant. OrderItem'da fiyat/ad **snapshot**.
+- [x] DB bağlantısı + session: `app/db/session.py` (`engine`, `get_session` dependency). Modeller `main.py`'de import edilip boot'ta kaydediliyor.
+- [x] Örnek veri + doğrulama: `app/db/seed.py` (idempotent) — 2 kategori, 2 ürün, 4 varyant; ilişkiler geri okunarak test edildi.
+- [x] Alembic kuruldu: `alembic/env.py` URL'i settings'ten alır, `SQLModel.metadata`'yı hedefler; SQLite için batch mode. İlk migration uygulandı, `alembic check` temiz.
 
 ### Faz 3 — Kimlik Doğrulama (Kendi JWT Auth)
 Amaç: kullanıcı kaydı, girişi ve rol ayrımını kurmak. Sepet, sipariş ve admin buna bağlanır.
@@ -278,10 +278,22 @@ E-commerce/
 │   ├── venv/                 # sanal ortam (commit edilmez)
 │   ├── requirements.txt
 │   ├── .env / .env.example   # .env commit EDİLMEZ, .example edilir
+│   ├── ecommerce.db          # SQLite (dev, commit edilmez)
+│   ├── alembic.ini
+│   ├── alembic/              # migration altyapısı (env.py settings'ten URL alır)
+│   │   └── versions/         # migration dosyaları
 │   └── app/
-│       ├── main.py           # FastAPI uygulaması, /health, CORS
-│       └── core/
-│           └── config.py     # pydantic-settings, .env okur (settings nesnesi)
+│       ├── main.py           # FastAPI uygulaması, /health, CORS, modelleri kaydeder
+│       ├── core/
+│       │   └── config.py     # pydantic-settings (settings: DATABASE_URL, FRONTEND_URL…)
+│       ├── db/
+│       │   ├── session.py    # engine + get_session dependency
+│       │   └── seed.py       # örnek veri (idempotent)
+│       └── models/           # SQLModel modelleri — yeni model __init__.py'ye eklenir
+│           ├── user.py       # User, UserRole
+│           ├── category.py   # Category
+│           ├── product.py    # Product, ProductVariant (stok+fiyat burada)
+│           └── order.py      # Order, OrderItem, OrderStatus
 └── frontend/                 # Next.js 16 (App Router, TS, Tailwind v4, Shadcn)
     ├── .env.local / .env.example   # NEXT_PUBLIC_API_URL; .local commit EDİLMEZ
     └── src/
@@ -313,8 +325,13 @@ uvicorn app.main:app --reload
 # bağımlılık ekleme: requirements.txt'i güncelle, sonra
 .\venv\Scripts\python.exe -m pip install -r requirements.txt
 
-# (Faz 2+) migration — alembic kurulduktan sonra
-alembic revision --autogenerate -m "mesaj"; alembic upgrade head
+# migration: model değiştirince yeni revizyon üret + uygula
+python -m alembic revision --autogenerate -m "mesaj"
+python -m alembic upgrade head
+python -m alembic check          # model ↔ migration kayması var mı?
+
+# örnek veri ekle (idempotent)
+python -m app.db.seed
 
 # (Faz 3+) test — pytest kurulduktan sonra
 pytest                                   # tüm testler

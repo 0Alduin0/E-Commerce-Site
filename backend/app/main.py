@@ -2,6 +2,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.core.config import settings
+import app.models  # noqa: F401  (tüm SQLModel modellerini kaydeder → ORM mapper'ları boot'ta hazır)
 
 app = FastAPI(title=settings.PROJECT_NAME)
 
