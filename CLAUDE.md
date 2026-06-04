@@ -106,12 +106,12 @@ Bu kurallar her zaman geçerlidir ve ihlal edilemez:
 ### Faz 1 — Proje Kurulumu ve Temel İskelet
 Amaç: backend ve frontend'i ayağa kaldırıp birbirleriyle konuşturmak.
 
-- [ ] FastAPI projesini kur, sanal ortam (venv) ve temel klasör yapısını oluştur.
-- [ ] Next.js projesini kur (App Router ile), Tailwind ve Shadcn'i ekle.
-- [ ] FastAPI'de basit bir test endpoint'i yaz (örn. `/health`), Next.js'ten fetch ile çağırıp bağlantıyı doğrula.
-- [ ] CORS'u ayarla: Next.js'in adresini (`localhost:3000`) FastAPI'de izinli yap.
-- [ ] Çevre değişkenleri için `.env` dosyalarını kur (API URL, sırlar burada tutulur).
-- [ ] Her iki projeyi de GitHub'a yükle (ileride otomatik deploy için gerekli).
+- [x] FastAPI projesini kur, sanal ortam (venv) ve temel klasör yapısını oluştur.
+- [x] Next.js projesini kur (App Router ile), Tailwind ve Shadcn'i ekle.
+- [x] FastAPI'de basit bir test endpoint'i yaz (örn. `/health`), Next.js'ten fetch ile çağırıp bağlantıyı doğrula.
+- [x] CORS'u ayarla: Next.js'in adresini (`localhost:3000`) FastAPI'de izinli yap.
+- [x] Çevre değişkenleri için `.env` dosyalarını kur (API URL, sırlar burada tutulur).
+- [~] Her iki projeyi de GitHub'a yükle — lokal `git init` + ilk commit yapıldı; GitHub'a push kullanıcının hesabıyla yapılacak (bkz. aşağıdaki not).
 
 ### Faz 2 — Veritabanı ve Veri Modelleri
 Amaç: e-ticaretin temel verisini modellemek. Projenin omurgası.
@@ -265,15 +265,68 @@ Bu sorular netleşmeden ilgili özellik kodlanmaz; varsayım yapılacaksa açık
 
 ---
 
+## Proje Yapısı
+
+Monorepo: tek git deposu, içinde bağımsız `backend/` ve `frontend/`. Deploy'da
+her biri kendi root dizininden yayınlanır (Railway → backend, Vercel → frontend).
+
+```
+E-commerce/
+├── CLAUDE.md
+├── .gitignore                # kök: .env, venv, node_modules yok sayılır
+├── backend/                  # FastAPI (Python 3.12)
+│   ├── venv/                 # sanal ortam (commit edilmez)
+│   ├── requirements.txt
+│   ├── .env / .env.example   # .env commit EDİLMEZ, .example edilir
+│   └── app/
+│       ├── main.py           # FastAPI uygulaması, /health, CORS
+│       └── core/
+│           └── config.py     # pydantic-settings, .env okur (settings nesnesi)
+└── frontend/                 # Next.js 16 (App Router, TS, Tailwind v4, Shadcn)
+    ├── .env.local / .env.example   # NEXT_PUBLIC_API_URL; .local commit EDİLMEZ
+    └── src/
+        ├── app/              # App Router sayfaları (page.tsx = bağlantı testi)
+        ├── components/ui/    # Shadcn bileşenleri
+        └── lib/utils.ts      # cn() yardımcı
+```
+
+Mimari kural hatırlatması: yeni ayar/sır `backend/app/core/config.py` içindeki
+`Settings`'e eklenir ve `.env.example`'a yer tutucu olarak yazılır.
+
+---
+
 ## Komutlar
 
-### Backend (FastAPI)
-- Test:        pytest
-- Tek test:    pytest tests/test_x.py::test_fonksiyon
-- Çalıştır:    uvicorn app.main:app --reload
-- Migration:   alembic revision --autogenerate -m "mesaj" && alembic upgrade head
+Windows + PowerShell. Backend ve frontend ayrı terminallerde çalışır.
 
-### Frontend (Next.js)
-- Çalıştır:    npm run dev
-- Build:       npm run build
-- Lint:        npm run lint
+### Backend (FastAPI) — `cd backend`
+```powershell
+# venv'i aktive et (her yeni terminalde)
+.\venv\Scripts\Activate.ps1
+
+# çalıştır (geliştirme, otomatik reload) → http://localhost:8000
+uvicorn app.main:app --reload
+
+# venv'i aktive etmeden tek seferlik çalıştırma
+.\venv\Scripts\python.exe -m uvicorn app.main:app --reload
+
+# bağımlılık ekleme: requirements.txt'i güncelle, sonra
+.\venv\Scripts\python.exe -m pip install -r requirements.txt
+
+# (Faz 2+) migration — alembic kurulduktan sonra
+alembic revision --autogenerate -m "mesaj"; alembic upgrade head
+
+# (Faz 3+) test — pytest kurulduktan sonra
+pytest                                   # tüm testler
+pytest tests/test_x.py::test_fonksiyon   # tek test
+```
+
+### Frontend (Next.js) — `cd frontend`
+```powershell
+npm run dev      # geliştirme → http://localhost:3000
+npm run build    # production build (TS + lint kontrolü dahil)
+npm run lint     # sadece lint
+npx shadcn@latest add <bilesen>   # yeni Shadcn bileşeni ekle
+```
+
+> Not: `&&` PowerShell 5.1'de çalışmaz; komutları `;` ile ayır.
