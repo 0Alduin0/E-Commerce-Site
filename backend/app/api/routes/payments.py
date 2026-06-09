@@ -139,6 +139,14 @@ async def payment_callback(
     return _result_redirect(order_id)
 
 
+@router.get("/webhook", include_in_schema=False)
+def payment_webhook_probe() -> dict:
+    """İyzico webhook URL'ini kaydederken GET ile erişilebilirlik kontrolü yapıyor.
+    Onay için 200 dönmemiz yeterli; gerçek işlem POST'ta. (GET'e 405 dönersek
+    İyzico URL'i 'onay bekleniyor'da bırakır.)"""
+    return {"status": "ok"}
+
+
 @router.post("/webhook", status_code=status.HTTP_200_OK)
 async def payment_webhook(
     request: Request,
