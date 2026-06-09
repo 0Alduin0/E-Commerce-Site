@@ -211,10 +211,16 @@ Amaç: projeyi internette canlıya almak.
 - [x] Next.js'i Vercel'e deploy et (GitHub'a bağla, otomatik deploy). **Frontend canlı**: `https://e-commerce-site-one-drab.vercel.app` (Root Directory=`frontend`).
 - [~] Çevre değişkenleri: **Railway'de girildi** → `DATABASE_URL` (`postgresql+psycopg://...`, Postgres servisine referansla), `ENVIRONMENT=production`, `JWT_SECRET` (yeni üretildi), `COOKIE_SAMESITE=none`, `FRONTEND_URL` (Vercel adresi + localhost). **Vercel'de**: `NEXT_PUBLIC_API_URL` (Railway adresi). **R2 + İyzico anahtarları HENÜZ GİRİLMEDİ** (dış hesap; boşken backend ayakta, ilgili uçlar 503).
 - [x] CORS'a production adresini ekle: `FRONTEND_URL`'e Vercel URL'i girildi; preflight'ta `access-control-allow-origin` Vercel için döndüğü canlı doğrulandı.
-- [~] İyzico webhook URL'i: İyzico anahtarları girilince panelde `{API}/payments/webhook` olarak ayarlanacak (anahtarlar bekleniyor).
+- [x] İyzico sandbox anahtarları Railway'e girildi (`IYZICO_API_KEY/SECRET_KEY`). Webhook URL'i İyzico panelinde `{API}/payments/webhook` olarak ayarlandı + onaylandı.
 - [ ] Custom domain bağla (müşterinin alan adı varsa) — opsiyonel.
 - [x] HTTPS: Vercel + Railway ikisi de otomatik HTTPS veriyor (canlı URL'ler https).
-- [~] Canlıda baştan sona test: vitrin/ürün API canlı doğrulandı (PG'den 2 ürün). Login/admin/sipariş kullanıcı tarayıcıdan test ediyor. **Ödeme testi İyzico sandbox anahtarları girilince** (şimdilik sipariş `pending` oluşur).
+- [x] **Canlıda baştan sona test BAŞARILI**: vitrin → login → sepet → sipariş → İyzico test kartı (`5528790000000008`) → webhook → **sipariş 'paid' + stok düştü** (Koşu Ayakkabısı 25→24, idempotent) doğrulandı.
+
+> Not (Faz 9 — İyzico gerçek entegrasyon, kritik öğrenimler):
+> 1. **Callback 405**: İyzico ödeme sonrası `callbackUrl`'e **POST** atar; Next.js statik sayfası POST kabul etmez (405). Çözüm: `PAYMENT_CALLBACK_URL` artık **backend** ucu (`/payments/callback`, GET+POST) — token'dan siparişi bulup kullanıcıyı `PAYMENT_RESULT_URL` (frontend `/odeme/sonuc`) adresine 303 GET redirect'le yollar.
+> 2. **Webhook GET probe**: İyzico webhook URL'ini kaydederken GET'le erişilebilirlik dener; sadece POST'a 405 dönünce URL 'onay bekleniyor'da kalır. `GET /payments/webhook` → 200 probe eklendi.
+> 3. **Webhook imzası YOK**: Gerçek İyzico `CHECKOUT_FORM_AUTH` webhook'u **güvenilir imza göndermiyor** (`x-iyz-signature` boş). Faz 8'deki HMAC imza doğrulama (sahte İyzico ile test edildiği için) gerçekte çalışmadı. **Çözüm (daha güçlü)**: webhook'taki `token`'la İyzico'ya geri sorulur (Checkout Form Retrieve `/payment/iyzipos/checkoutform/auth/ecom/detail`); 'paid' kararı İyzico'nun cevabına göre verilir — sahte webhook taklit edilemez. Gerçek payload alanları: `paymentConversationId` (order_ref), `token`, `iyziPaymentId`, `status`.
+> 4. **Railway deploy gecikmesi**: `railway up` root=`backend` ayarıyla çakışıyor (36KB boş snapshot → fail); KULLANMA. GitHub git-triggered deploy bazen geç tetikleniyor; sabırla beklenince geliyor. Seed prod'a `DATABASE_PUBLIC_URL` (proxy host) ile çalıştırıldı.
 
 > Not (Faz 9): Seed prod PG'ye Railway CLI + `DATABASE_PUBLIC_URL` (proxy host) ile elle çalıştırıldı — private host (`RAILWAY_PRIVATE_DOMAIN`) sadece Railway iç ağında çözülür, lokalden `getaddrinfo failed` verir. Admin güçlü şifreyle kuruldu (`SEED_ADMIN_EMAIL/PASSWORD` env'leri seed.py'ye eklendi). **Kalan dış-hesap işleri**: Cloudflare R2 (görsel yükleme aktifleşir) + İyzico sandbox (ödeme aktifleşir) + webhook URL'i.
 
