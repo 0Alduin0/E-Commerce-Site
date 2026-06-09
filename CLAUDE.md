@@ -151,7 +151,7 @@ Amaç: ürünleri API'den sunup vitrinde göstermek. İlk "görünen" aşama.
 ### Faz 5 — Görsel Yükleme (Cloudflare R2)
 Amaç: ürün fotoğraflarının otomatik yüklenip saklanması.
 
-- [~] Cloudflare R2 hesabı/bucket/anahtarlar: **kullanıcı yapacak** (dış hesap). Kod hazır; `.env`'e `R2_*` girilince çalışır. Anahtarlar boşken `images_enabled=False` → yükleme uçları 503, backend yine ayakta.
+- [~] Cloudflare R2 hesabı/bucket/anahtarlar: **kullanıcı YAPTI** (prod). 5 değişken Railway'e girildi → `images_enabled=True`, yükleme ucu artık 401 (auth), 503 değil. Admin panelinden görsel yükleme **çalışıyor** (R2'ye yazıyor). **AMA görsel vitrinde GÖRÜNMÜYOR** — bkz. aşağıdaki açık sorun.
 - [x] boto3 ile R2 bağlantısı: `app/services/storage.py` (lazy client, S3v4, `region=auto`). `app/core/config.py`'de `R2_*` ayarları + `images_enabled`/`allowed_image_types` property'leri.
 - [x] **Karar: çoklu galeri** → ayrı `ProductImage` modeli (url, r2_key, sort_order, is_cover). Yükleme ucu `POST /products/{id}/images` (multipart, **uuid'li benzersiz ad**: `products/<uuid>.<ext>`), tip (jpeg/png/webp) + boyut (5MB) doğrulaması. İlk görsel otomatik kapak. Ayrıca `DELETE .../images/{id}` ve `PUT .../images/{id}/cover`.
 - [x] DB'ye **yalnızca URL + r2_key** yazılır (görselin kendisi R2'de — mutlak kural). Detay/liste cevabına `images[]` ve `cover_image_url` eklendi; kapak önce sıralanır.
@@ -161,6 +161,16 @@ Amaç: ürün fotoğraflarının otomatik yüklenip saklanması.
 - [x] **Test**: izole geçici DB + sahte R2 ile 9 senaryo (yükleme/kapak otomasyonu/sıralama/tip-boyut validasyon/kapak değiştir/kapak devral/ürün silince R2 temizliği) — tümü geçti. Gerçek `ecommerce.db` korundu.
 - [ ] İsteğe bağlı: R2 custom domain (`cdn.site.com`) — kullanıcı R2'yi bağlayınca.
 - [ ] İsteğe bağlı: yüklemede görsel küçültme/sıkıştırma (Pillow) — Faz 10 cila.
+
+> **AÇIK SORUN (2026-06-09, görsel vitrinde görünmüyor — buradan devam et):**
+> Görsel R2'ye yükleniyor ama vitrinde "kırık resim" simgesi çıkıyor. Tespit + kalan adımlar:
+> 1. **Yanlış public URL kaydedildi (ana sebep):** İlk denemede `R2_PUBLIC_BASE_URL`'e R2'nin S3 endpoint'i (`https://<account>.r2.cloudflorestorage.com`) girilmişti — bu adres public DEĞİL (curl→400). Doğrusu **r2.dev public URL'i**: `https://pub-c82993573ea34a16be973d0987ef2738.r2.dev`. Railway'de düzeltildi (kullanıcı "ekledim" dedi) ama **deploy sonrası yeni görselle doğrulanmadı**.
+> 2. **r2.dev erişimi belirsiz:** Sandbox ortamından `pub-...r2.dev`'e TLS bağlanamadı (HTTP 000 — muhtemelen yeni aktif edilen subdomain'in sertifikası/propagasyonu, ya da ortam kısıtı). **Kullanıcı tarayıcıdan `https://pub-c82993573ea34a16be973d0987ef2738.r2.dev/products/<key>.png` açıp gerçekten açılıyor mu DOĞRULAMALI.** Açılmıyorsa: bucket Settings → Public Access / r2.dev subdomain gerçekten **enable** mi, birkaç dk propagasyon bekle.
+> 3. **Eski bozuk kayıt:** Koşu Ayakkabısı'na yüklenen ilk görsel YANLIŞ URL'le (S3 endpoint) DB'ye yazıldı (`cover_image_url:None`, S3 endpoint URL'li img). Ayar düzelse bile o kayıt düzelmez → admin panelinden **sil + yeniden yükle** (yeni yükleme doğru r2.dev URL'iyle kaydeder).
+> 4. **Vercel whitelist:** `NEXT_PUBLIC_IMAGE_HOST=pub-c82993573ea34a16be973d0987ef2738.r2.dev` (https'siz, sadece host) Vercel'e girildi mi + **redeploy edildi mi** (env build'e gömülür)? `next.config.ts` bu host'u remotePatterns'a ekliyor; yoksa next/image görseli reddeder.
+> 5. **Cover boş sorunu:** Yüklenen görsel var ama `cover_image_url:None` görüldü — ilk görselin otomatik kapak olması bekleniyordu. Görsel akışı düzelince bunu da kontrol et (gerekirse `PUT .../images/{id}/cover`).
+>
+> **Sıra:** (a) tarayıcıdan r2.dev URL açılıyor mu doğrula → (b) eski görseli sil+yeniden yükle → (c) Vercel `NEXT_PUBLIC_IMAGE_HOST` + redeploy → (d) vitrinde kapak görünür + cover dolu mu kontrol.
 
 ### Faz 6 — Sepet ve Sipariş
 Amaç: kullanıcının ürün seçip sipariş oluşturabilmesi. Ödemeden hemen önceki adım.
@@ -222,7 +232,9 @@ Amaç: projeyi internette canlıya almak.
 > 3. **Webhook imzası YOK**: Gerçek İyzico `CHECKOUT_FORM_AUTH` webhook'u **güvenilir imza göndermiyor** (`x-iyz-signature` boş). Faz 8'deki HMAC imza doğrulama (sahte İyzico ile test edildiği için) gerçekte çalışmadı. **Çözüm (daha güçlü)**: webhook'taki `token`'la İyzico'ya geri sorulur (Checkout Form Retrieve `/payment/iyzipos/checkoutform/auth/ecom/detail`); 'paid' kararı İyzico'nun cevabına göre verilir — sahte webhook taklit edilemez. Gerçek payload alanları: `paymentConversationId` (order_ref), `token`, `iyziPaymentId`, `status`.
 > 4. **Railway deploy gecikmesi**: `railway up` root=`backend` ayarıyla çakışıyor (36KB boş snapshot → fail); KULLANMA. GitHub git-triggered deploy bazen geç tetikleniyor; sabırla beklenince geliyor. Seed prod'a `DATABASE_PUBLIC_URL` (proxy host) ile çalıştırıldı.
 
-> Not (Faz 9): Seed prod PG'ye Railway CLI + `DATABASE_PUBLIC_URL` (proxy host) ile elle çalıştırıldı — private host (`RAILWAY_PRIVATE_DOMAIN`) sadece Railway iç ağında çözülür, lokalden `getaddrinfo failed` verir. Admin güçlü şifreyle kuruldu (`SEED_ADMIN_EMAIL/PASSWORD` env'leri seed.py'ye eklendi). **Kalan dış-hesap işleri**: Cloudflare R2 (görsel yükleme aktifleşir) + İyzico sandbox (ödeme aktifleşir) + webhook URL'i.
+> Not (Faz 9): Seed prod PG'ye Railway CLI + `DATABASE_PUBLIC_URL` (proxy host) ile elle çalıştırıldı — private host (`RAILWAY_PRIVATE_DOMAIN`) sadece Railway iç ağında çözülür, lokalden `getaddrinfo failed` verir. Admin güçlü şifreyle kuruldu (`SEED_ADMIN_EMAIL/PASSWORD` env'leri seed.py'ye eklendi). **Dış-hesap işleri durumu**: İyzico sandbox + webhook **TAMAM** (ödeme uçtan uca canlı çalışıyor). Cloudflare R2 anahtarları **girildi** ama görsel vitrinde görünmüyor — bkz. Faz 5 sonundaki **AÇIK SORUN** notu (r2.dev public URL doğrulaması + eski kaydı yeniden yükleme + Vercel `NEXT_PUBLIC_IMAGE_HOST` redeploy).
+
+> **Durum özeti (proje kapatılırken, 2026-06-09):** Faz 1–9 çekirdek CANLI ve çalışıyor (vitrin, auth, sepet, sipariş, admin, gerçek ödeme). Tek açık uç: **görsel görünürlüğü** (R2 yükleniyor ama vitrinde çıkmıyor — Faz 5 AÇIK SORUN). Geri dönünce oradan devam. Canlı URL'ler: front `https://e-commerce-site-one-drab.vercel.app`, API `https://e-commerce-site-production-617f.up.railway.app`, repo `0Alduin0/E-Commerce-Site` (branch `master`).
 
 ### Faz 10 — Opsiyoneller ve Son Cila
 Amaç: çekirdek çalıştıktan sonra deneyimi ve dayanıklılığı artırmak.
