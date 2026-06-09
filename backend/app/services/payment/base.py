@@ -83,5 +83,9 @@ class PaymentProvider(ABC):
 
     @abstractmethod
     def verify_webhook(self, headers: dict[str, str], raw_body: bytes) -> WebhookResult:
-        """Gelen webhook'u doğrular (imza). SAHTE bildirimleri eler. Sipariş onayı
-        YALNIZCA bunun is_valid + is_paid sonucuna göre yapılır."""
+        """Gelen webhook'u doğrular. SAHTE bildirimleri eler. Sipariş onayı
+        YALNIZCA bunun is_valid + is_paid sonucuna göre yapılır.
+
+        Not: Bazı sağlayıcılar (İyzico CHECKOUT_FORM_AUTH) webhook'ta güvenilir imza
+        GÖNDERMEZ. O durumda doğrulama, webhook'taki token'la sağlayıcıya geri sorup
+        (retrieve) ödemeyi KAYNAĞINDAN teyit ederek yapılır — bu imzadan da güçlüdür."""

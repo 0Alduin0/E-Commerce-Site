@@ -148,39 +148,69 @@ class IyzicoProvider(PaymentProvider):
     # --- Webhook doğrulama ---------------------------------------------------
 
     def verify_webhook(self, headers: dict[str, str], raw_body: bytes) -> WebhookResult:
-        """İyzico bildirim imzasını doğrular. İyzico, gövdeyi imzalayıp
-        'X-Iyz-Signature-V3' (HMAC-SHA256, base64) başlığında gönderir.
+        """İyzico ödeme bildirimini KAYNAĞINDAN doğrular.
 
-        Sahte bildirimler: imza eşleşmezse is_valid=False döner ve sipariş ASLA
-        onaylanmaz. Bu, frontend'in 'ödendi' demesine güvenmeme kuralının teknik
-        garantisidir.
+        İyzico'nun CHECKOUT_FORM_AUTH webhook'u güvenilir bir imza GÖNDERMEZ
+        (x-iyz-signature boş gelir). Bu yüzden webhook'taki status'a körü körüne
+        güvenmek yerine, payload'daki token'ı alıp İyzico'ya geri sorarız
+        (Checkout Form Retrieve). Asıl 'paid' kararı İYZİCO'NUN cevabına göre verilir —
+        bu, sahte webhook'a karşı imzadan da güçlü garantidir (saldırgan İyzico'nun
+        retrieve cevabını taklit edemez).
+
+        Webhook gerçek alanları: paymentConversationId (bizim order_ref), token,
+        iyziPaymentId, status, iyziEventType.
         """
-        # Başlık adı büyük/küçük harf duyarsız gelebilir → normalize et.
-        norm = {k.lower(): v for k, v in headers.items()}
-        provided_sig = norm.get("x-iyz-signature-v3") or norm.get("x-iyz-signature")
-
-        expected = base64.b64encode(
-            hmac.new(
-                settings.IYZICO_SECRET_KEY.encode("utf-8"),
-                raw_body,
-                hashlib.sha256,
-            ).digest()
-        ).decode("utf-8")
-
-        is_valid = bool(provided_sig) and hmac.compare_digest(provided_sig, expected)
-
         try:
             payload = json.loads(raw_body.decode("utf-8"))
         except (ValueError, UnicodeDecodeError):
             return WebhookResult(is_valid=False, order_ref=None, is_paid=False)
 
-        order_ref = payload.get("conversationId") or payload.get("basketId")
-        status_str = (payload.get("status") or payload.get("paymentStatus") or "").upper()
-        is_paid = status_str in {"SUCCESS", "PAID", "SUCCESSFUL"}
+        order_ref = (
+            payload.get("paymentConversationId")
+            or payload.get("conversationId")
+            or payload.get("basketId")
+        )
+        token = payload.get("token")
+
+        # Token yoksa doğrulayamayız → reddet (güvenli taraf).
+        if not token:
+            return WebhookResult(is_valid=False, order_ref=order_ref, is_paid=False)
+
+        # --- İyzico'ya geri sor: bu token'lı ödeme gerçekten başarılı mı? ---
+        retrieved = self._retrieve_checkout_form(token)
+        if retrieved is None:
+            # İyzico'ya ulaşılamadı → is_valid=False (webhook tekrar gelsin/elle bakılsın).
+            return WebhookResult(is_valid=False, order_ref=order_ref, is_paid=False)
+
+        # retrieve cevabı İyzico'dan geldi → güvenilir. paymentStatus/status SUCCESS mi?
+        api_ok = retrieved.get("status") == "success"
+        pay_status = (retrieved.get("paymentStatus") or "").upper()
+        is_paid = api_ok and pay_status in {"SUCCESS", "PAID", "SUCCESSFUL"}
+        # order_ref'i de İyzico'nun cevabından teyit et (manipülasyona kapalı).
+        ref = retrieved.get("conversationId") or order_ref
+        payment_id = retrieved.get("paymentId") or payload.get("iyziPaymentId")
 
         return WebhookResult(
-            is_valid=is_valid,
-            order_ref=order_ref,
+            is_valid=True,  # cevap İyzico'dan doğrulandı
+            order_ref=str(ref) if ref is not None else None,
             is_paid=is_paid,
-            provider_payment_id=str(payload.get("paymentId")) if payload.get("paymentId") else None,
+            provider_payment_id=str(payment_id) if payment_id else None,
         )
+
+    def _retrieve_checkout_form(self, token: str) -> dict | None:
+        """İyzico Checkout Form Retrieve: token'la ödemenin gerçek durumunu sorar.
+        Hata/ulaşılamama durumunda None döner (çağıran güvenli tarafta reddeder)."""
+        uri_path = "/payment/iyzipos/checkoutform/auth/ecom/detail"
+        body_str = json.dumps({"locale": "tr", "token": token})
+        authorization, _ = self._auth_header(uri_path, body_str)
+        try:
+            resp = httpx.post(
+                f"{settings.IYZICO_BASE_URL}{uri_path}",
+                content=body_str,
+                headers={"Authorization": authorization, "Content-Type": "application/json"},
+                timeout=20.0,
+            )
+            resp.raise_for_status()
+            return resp.json()
+        except Exception:
+            return None
