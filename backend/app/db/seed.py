@@ -4,6 +4,7 @@
     .\\venv\\Scripts\\python.exe -m app.db.seed
 """
 
+import os
 from decimal import Decimal
 
 from sqlmodel import Session, select
@@ -11,6 +12,12 @@ from sqlmodel import Session, select
 from app.core.security import hash_password
 from app.db.session import engine
 from app.models import Category, Product, ProductVariant, User, UserRole
+
+# Production'da ilk admin'i güçlü şifreyle oluşturmak için env'den okunur.
+# Tanımlıysa zayıf dev varsayılanı yerine bunlar kullanılır (CLAUDE.md: prod'da
+# şifreler değişir / sırlar koda gömülmez). Tanımsızsa dev örnek değerleri.
+SEED_ADMIN_EMAIL = os.getenv("SEED_ADMIN_EMAIL", "admin@example.com")
+SEED_ADMIN_PASSWORD = os.getenv("SEED_ADMIN_PASSWORD", "admin12345")
 
 
 def seed_users(session: Session) -> None:
@@ -24,8 +31,8 @@ def seed_users(session: Session) -> None:
         return
 
     admin = User(
-        email="admin@example.com",
-        hashed_password=hash_password("admin12345"),
+        email=SEED_ADMIN_EMAIL,
+        hashed_password=hash_password(SEED_ADMIN_PASSWORD),
         full_name="Site Yöneticisi",
         role=UserRole.admin,
     )
@@ -37,7 +44,7 @@ def seed_users(session: Session) -> None:
     )
     session.add_all([admin, customer])
     session.commit()
-    print("Kullanıcı seed tamam: admin@example.com / user@example.com (şifreler dev içindir).")
+    print(f"Kullanıcı seed tamam: admin={SEED_ADMIN_EMAIL} (+ user@example.com test müşterisi).")
 
 
 def seed() -> None:
