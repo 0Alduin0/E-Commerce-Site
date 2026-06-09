@@ -164,6 +164,12 @@ async def payment_webhook(
     raw_body = await request.body()
     headers = dict(request.headers)
 
+    # GEÇİCİ TANILAMA (Faz 9): İyzico'nun gerçek webhook formatını görmek için
+    # header'ları ve ham gövdeyi logla. İmza doğru oturunca KALDIRILACAK.
+    iyz_headers = {k: v for k, v in headers.items() if "iyz" in k.lower() or "signature" in k.lower()}
+    logger.warning("WEBHOOK-DEBUG iyz_headers=%s", iyz_headers)
+    logger.warning("WEBHOOK-DEBUG raw_body=%s", raw_body.decode("utf-8", errors="replace")[:1000])
+
     provider = get_payment_provider()
     result = provider.verify_webhook(headers, raw_body)
 
