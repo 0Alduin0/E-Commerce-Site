@@ -1,6 +1,20 @@
-fastapi
-uvicorn[standard]
-pydantic-settings
-python-dotenv
-sqlmodel
-alembic
+# Sürümler sabitlendi (Faz 9): production'da tekrarlanabilir build için.
+# Güncelleme: sürümü değiştir, venv'de pip install -r, test et, sonra commit.
+fastapi==0.136.3
+uvicorn[standard]==0.49.0
+pydantic==2.13.4
+pydantic-settings==2.14.1
+pydantic[email]==2.13.4
+python-dotenv==1.2.2
+sqlmodel==0.0.38
+alembic==1.18.4
+# Auth (Faz 3)
+bcrypt==5.0.0              # şifre hash (passlib kullanmıyoruz; bkz. core/security.py)
+python-jose[cryptography]==3.5.0
+python-multipart==0.0.32  # OAuth2 form (login) + dosya yükleme (multipart) için
+# Görsel/dosya depolama (Faz 5)
+boto3==1.43.24            # Cloudflare R2 (S3 uyumlu)
+# Ödeme (Faz 8) — İyzico'ya kendi async istemcimizle bağlanıyoruz
+httpx==0.28.1
+# Veritabanı (Faz 9) — production PostgreSQL (Railway). Dev'de SQLite, sürücü gerekmez.
+psycopg[binary]==3.2.3
