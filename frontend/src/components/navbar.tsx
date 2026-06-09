@@ -1,8 +1,9 @@
 import Link from "next/link";
 
+import { AuthMenu } from "@/components/auth-menu";
 import { CartBadge } from "@/components/cart-badge";
 
-/** Üst menü. Logo + sepet (adet rozetli). */
+/** Üst menü. Logo + siparişlerim + sepet (adet rozetli) + oturum (giriş/çıkış). */
 export function Navbar() {
   return (
     <header className="sticky top-0 z-10 border-b border-foreground/10 bg-background/80 backdrop-blur">
@@ -18,6 +19,7 @@ export function Navbar() {
             Siparişlerim
           </Link>
           <CartBadge />
+          <AuthMenu />
         </nav>
       </div>
     </header>

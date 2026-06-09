@@ -207,14 +207,16 @@ Amaç: gerçek ödeme akışını test ortamında kurmak. En kritik ve en dikkat
 ### Faz 9 — Deploy ve Yayın
 Amaç: projeyi internette canlıya almak.
 
-- [ ] Railway'de PostgreSQL oluştur, FastAPI'yi Railway'e deploy et (GitHub'a bağla).
-- [ ] Next.js'i Vercel'e deploy et (GitHub'a bağla, otomatik deploy).
-- [ ] Tüm çevre değişkenlerini (İyzico, R2, JWT secret, DB) Vercel ve Railway panellerine gir.
-- [ ] CORS'a production adresini ekle (Vercel'in gerçek URL'i).
-- [ ] İyzico webhook URL'ini production adresine güncelle.
-- [ ] Custom domain bağla (müşterinin alan adı varsa).
-- [ ] HTTPS otomatik gelir (Vercel/Railway sağlar) — doğrula.
-- [ ] Canlıda baştan sona bir test alışverişi yap (sandbox ödeme ile).
+- [x] Railway'de PostgreSQL oluştur, FastAPI'yi Railway'e deploy et (GitHub'a bağla). **Repo**: `0Alduin0/E-Commerce-Site` (branch `master`). Railway proje adı `precious-manifestation`, backend servisi `E-Commerce-Site` (Root Directory=`backend`). **Backend canlı**: `https://e-commerce-site-production-617f.up.railway.app`. Start: `alembic upgrade head && uvicorn ... $PORT` (Procfile/railway.json). 3 migration prod PG'de koştu (`PostgresqlImpl` doğrulandı).
+- [x] Next.js'i Vercel'e deploy et (GitHub'a bağla, otomatik deploy). **Frontend canlı**: `https://e-commerce-site-one-drab.vercel.app` (Root Directory=`frontend`).
+- [~] Çevre değişkenleri: **Railway'de girildi** → `DATABASE_URL` (`postgresql+psycopg://...`, Postgres servisine referansla), `ENVIRONMENT=production`, `JWT_SECRET` (yeni üretildi), `COOKIE_SAMESITE=none`, `FRONTEND_URL` (Vercel adresi + localhost). **Vercel'de**: `NEXT_PUBLIC_API_URL` (Railway adresi). **R2 + İyzico anahtarları HENÜZ GİRİLMEDİ** (dış hesap; boşken backend ayakta, ilgili uçlar 503).
+- [x] CORS'a production adresini ekle: `FRONTEND_URL`'e Vercel URL'i girildi; preflight'ta `access-control-allow-origin` Vercel için döndüğü canlı doğrulandı.
+- [~] İyzico webhook URL'i: İyzico anahtarları girilince panelde `{API}/payments/webhook` olarak ayarlanacak (anahtarlar bekleniyor).
+- [ ] Custom domain bağla (müşterinin alan adı varsa) — opsiyonel.
+- [x] HTTPS: Vercel + Railway ikisi de otomatik HTTPS veriyor (canlı URL'ler https).
+- [~] Canlıda baştan sona test: vitrin/ürün API canlı doğrulandı (PG'den 2 ürün). Login/admin/sipariş kullanıcı tarayıcıdan test ediyor. **Ödeme testi İyzico sandbox anahtarları girilince** (şimdilik sipariş `pending` oluşur).
+
+> Not (Faz 9): Seed prod PG'ye Railway CLI + `DATABASE_PUBLIC_URL` (proxy host) ile elle çalıştırıldı — private host (`RAILWAY_PRIVATE_DOMAIN`) sadece Railway iç ağında çözülür, lokalden `getaddrinfo failed` verir. Admin güçlü şifreyle kuruldu (`SEED_ADMIN_EMAIL/PASSWORD` env'leri seed.py'ye eklendi). **Kalan dış-hesap işleri**: Cloudflare R2 (görsel yükleme aktifleşir) + İyzico sandbox (ödeme aktifleşir) + webhook URL'i.
 
 ### Faz 10 — Opsiyoneller ve Son Cila
 Amaç: çekirdek çalıştıktan sonra deneyimi ve dayanıklılığı artırmak.
