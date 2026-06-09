@@ -11,7 +11,8 @@
 
 import logging
 
-from fastapi import APIRouter, Depends, HTTPException, Request, status
+from fastapi import APIRouter, Depends, Form, HTTPException, Request, status
+from fastapi.responses import RedirectResponse
 from sqlmodel import Session, select
 
 from app.api.deps import get_current_user
@@ -98,6 +99,44 @@ def init_payment(
     session.commit()
 
     return {"checkout_form_content": result.checkout_form_content, "token": result.token}
+
+
+def _result_redirect(order_id: int | None) -> RedirectResponse:
+    """Kullanıcıyı frontend'in ödeme sonuç sayfasına GET ile yollar.
+
+    303 See Other: POST callback'i GET'e çevirir (tarayıcı sonuç sayfasını GET'ler).
+    Sonuç sayfası bilgilendirme amaçlı; gerçek 'paid' onayı webhook'ta yapılır.
+    """
+    base = settings.PAYMENT_RESULT_URL.rstrip("?")
+    sep = "&" if "?" in base else "?"
+    url = f"{base}{sep}order={order_id}" if order_id else base
+    return RedirectResponse(url=url, status_code=status.HTTP_303_SEE_OTHER)
+
+
+@router.api_route("/callback", methods=["GET", "POST"], include_in_schema=False)
+async def payment_callback(
+    request: Request,
+    token: str | None = Form(default=None),
+    session: Session = Depends(get_session),
+) -> RedirectResponse:
+    """İyzico hosted form ödeme sonrası TARAYICIYI buraya POST eder (callback).
+
+    Next.js sayfası POST kabul etmez (405) — bu yüzden callback backend'e gelir,
+    biz token'dan siparişi bulup kullanıcıyı frontend sonuç sayfasına GET'le
+    yönlendiririz. ÖDEME ONAYI BURADA YAPILMAZ (mutlak kural) — sadece UX dönüşü;
+    'paid' geçişi yalnızca imzalı webhook'ta olur.
+    """
+    if not token:
+        # Bazı akışlarda token query string'de gelebilir.
+        token = request.query_params.get("token")
+
+    order_id: int | None = None
+    if token:
+        order = session.exec(select(Order).where(Order.payment_token == token)).first()
+        if order is not None:
+            order_id = order.id
+
+    return _result_redirect(order_id)
 
 
 @router.post("/webhook", status_code=status.HTTP_200_OK)

@@ -60,8 +60,12 @@ class Settings(BaseSettings):
     IYZICO_API_KEY: str = ""
     IYZICO_SECRET_KEY: str = ""
     IYZICO_BASE_URL: str = "https://sandbox-api.iyzipay.com"
-    # İyzico'nun ödeme sonrası tarayıcıyı döndüreceği frontend adresi (sonuç sayfası).
-    PAYMENT_CALLBACK_URL: str = "http://localhost:3000/odeme/sonuc"
+    # İyzico'nun ödeme sonrası tarayıcıyı POST'layacağı adres. Next.js sayfası POST
+    # kabul etmez (405) → bu BACKEND callback ucu olmalı: {API}/payments/callback.
+    # Backend buradan kullanıcıyı PAYMENT_RESULT_URL'e (frontend) GET ile yönlendirir.
+    PAYMENT_CALLBACK_URL: str = "http://localhost:8000/payments/callback"
+    # Kullanıcının ödeme sonrası göreceği frontend sonuç sayfası (callback buraya yollar).
+    PAYMENT_RESULT_URL: str = "http://localhost:3000/odeme/sonuc"
 
     @property
     def cors_origins(self) -> list[str]:
