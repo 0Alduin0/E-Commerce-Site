@@ -37,6 +37,11 @@ class Order(SQLModel, table=True):
     shipping_address: str
     shipping_city: str = Field(max_length=100)
 
+    # Ödeme izi (Faz 8). payment_token: İyzico checkout oturumu; provider_payment_id:
+    # İyzico'daki ödeme kimliği (denetim). Kart verisi ASLA tutulmaz.
+    payment_token: str | None = Field(default=None, max_length=255, index=True)
+    provider_payment_id: str | None = Field(default=None, max_length=255)
+
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
     user: Optional["User"] = Relationship()

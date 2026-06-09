@@ -1,6 +1,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+from app.api.routes import admin, auth, images, orders, payments, products
 from app.core.config import settings
 import app.models  # noqa: F401  (tüm SQLModel modellerini kaydeder → ORM mapper'ları boot'ta hazır)
 
@@ -15,6 +16,14 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+app.include_router(auth.router)
+app.include_router(products.router)
+app.include_router(images.router)
+app.include_router(orders.router)
+app.include_router(admin.router)
+app.include_router(payments.router)
 
 
 @app.get("/health")

@@ -126,68 +126,83 @@ Amaç: e-ticaretin temel verisini modellemek. Projenin omurgası.
 ### Faz 3 — Kimlik Doğrulama (Kendi JWT Auth)
 Amaç: kullanıcı kaydı, girişi ve rol ayrımını kurmak. Sepet, sipariş ve admin buna bağlanır.
 
-- [ ] Şifre hash'leme için passlib + bcrypt kur. Şifreler asla düz saklanmaz.
-- [ ] Kayıt (register) ve giriş (login) endpoint'lerini yaz.
-- [ ] Access token (kısa ömürlü) + refresh token (uzun ömürlü) üretimini kur.
-- [ ] Token doğrulama bağımlılığını (dependency) yaz; korumalı endpoint'ler bunu kullanır.
-- [ ] Rol sistemi ekle: "user" ve "admin". Token içine rolü koy.
-- [ ] Next.js tarafında: refresh token'ı httpOnly cookie'de tut (localStorage DEĞİL — XSS riski).
-- [ ] Misafir alışverişe izin verilip verilmeyeceğine karar ver ve ona göre kurgula.
+- [x] Şifre hash'leme: **bcrypt doğrudan** kullanıldı (passlib değil — 1.7.4 bakımsız ve yeni bcrypt ile `__about__` uyumsuzluğu üretiyor). Hash/verify `app/core/security.py`'de.
+- [x] Kayıt (register) ve giriş (login) endpoint'leri: `app/api/routes/auth.py`. Login hem JSON (`/auth/login`) hem OAuth2 form (`/auth/token`, Swagger Authorize için). Register'dan admin atanamaz.
+- [x] Access (15dk) + refresh (7gün) token üretimi. Payload'da `type` (access/refresh) var; refresh ile access endpoint'ine girilemez. Süreler `.env`'den (`config.py`).
+- [x] Token doğrulama dependency'leri: `app/api/deps.py` → `get_current_user` (DB'den canlı kontrol: pasif/silinmiş user reddedilir) + `require_admin`.
+- [x] Rol sistemi: `UserRole` (user/admin) token içinde taşınır. İlk admin `seed.py` ile atanır (admin@example.com / dev şifresi).
+- [x] Refresh token **httpOnly cookie**'de: `Path=/auth`, `SameSite=lax`, `secure` production'da açık. localStorage'da DEĞİL. `/auth/refresh` rotasyon yapar, `/auth/logout` cookie'yi siler.
+- [x] **Karar: üyelik zorunlu** (misafir alışveriş yok). Her sipariş bir kullanıcıya bağlanacak (Faz 6).
+- [ ] Next.js entegrasyonu (login formu, token saklama/yenileme) — frontend tarafı Faz 4'te vitrinle birlikte yapılacak.
 
 ### Faz 4 — Ürün API'si ve Vitrin
 Amaç: ürünleri API'den sunup vitrinde göstermek. İlk "görünen" aşama.
 
-- [ ] FastAPI'de ürün endpoint'leri: listele (GET), tek ürün getir, (admin için) ekle/düzenle/sil.
-- [ ] Filtreleme, arama ve sayfalama (pagination) ekle — ürün sayısı artınca şart.
-- [ ] Next.js'te ürün listesi sayfasını Server Component olarak yaz (SEO için).
-- [ ] Ürün detay sayfasını dinamik route ile yap; her ürünün kendi metadata'sı olsun (Google'da çıksın).
-- [ ] Vitrin tasarımını Tailwind + Shadcn ile kur (ürün kartları, kategori menüsü).
-- [ ] Sepet butonları gibi etkileşimli kısımları Client Component yap.
+- [x] Ürün endpoint'leri: `app/api/routes/products.py`. Public: `GET /products` (liste), `GET /products/{slug}` (detay), `GET /categories`. Admin (`require_admin`): `POST/PATCH/DELETE /products`. DELETE'te R2 görsel temizliği Faz 5'te eklenecek.
+- [x] Arama (`q`, isimde ilike), kategori filtresi (slug), **fiyat aralığı** (`min_price`/`max_price`), **sıralama** (newest/price_asc/price_desc/name_asc), sayfalama (`page`/`page_size`). Fiyat/stok varyantta → SQL subquery ile min_price + total_stock aggregate edilir; **karar: stok bitince ürün listede kalır, 'Tükendi' rozetiyle** gösterilir (gizlenmez — SEO).
+- [x] Ana sayfa (`app/page.tsx`) = ürün listesi, **Server Component** (SSR doğrulandı: ürün adları/fiyatları HTML'de). Türetilmiş `min_price`/`in_stock` backend'den gelir, frontend hesaplamaz.
+- [x] Detay (`app/urun/[slug]/page.tsx`): dinamik route + **`generateMetadata`** (her ürünün kendi title/description'ı — Google'da ayrı çıkar). Olmayan ürün → `notFound()` (404 doğrulandı).
+- [x] Tailwind + Shadcn: ProductCard, Navbar, filtre çubuğu (badge/card/input/select eklendi). `lib/api.ts` (tipler + server fetch, revalidate cache), `lib/format.ts` (TL formatı).
+- [x] Etkileşimli kısımlar Client Component: `product-filters.tsx` (arama/kategori/sıralama → URL query param), `add-to-cart.tsx` (varyant seçimi + stok kilidi; sepet işlevi Faz 6'da bağlanacak).
+- [x] `npm run build` temiz (TS + lint geçti). Karar: **fiyat aralığı + sıralama dahil** arama/filtre kapsamı.
+
+> Not (Faz 4): Vitrinde `min_price`/`max_price` filtresi backend'de hazır ve test edildi; UI'da fiyat aralığı için ayrıca bir kontrol (slider/input) eklenmedi — arama, kategori ve sıralama çubuğu kuruldu. Fiyat aralığı UI'ı gerekirse hızlıca eklenir.
 
 ### Faz 5 — Görsel Yükleme (Cloudflare R2)
 Amaç: ürün fotoğraflarının otomatik yüklenip saklanması.
 
-- [ ] Cloudflare R2 hesabı aç, bir bucket oluştur, erişim anahtarlarını al.
-- [ ] FastAPI'de boto3 ile R2 bağlantısını kur (anahtarlar `.env`'de).
-- [ ] Ürün ekleme endpoint'ine dosya yükleme ekle; benzersiz isim (uuid) üret.
-- [ ] Yükleme sonrası dönen URL'i veritabanına kaydet (görseli değil, URL'i).
-- [ ] Ürün silinince R2'deki görseli de silen mantığı ekle (çöp birikmesin).
-- [ ] İsteğe bağlı: R2'ye custom domain (`cdn.site.com`) bağla.
-- [ ] İsteğe bağlı: yüklemede görseli küçült/sıkıştır (hız için).
+- [~] Cloudflare R2 hesabı/bucket/anahtarlar: **kullanıcı yapacak** (dış hesap). Kod hazır; `.env`'e `R2_*` girilince çalışır. Anahtarlar boşken `images_enabled=False` → yükleme uçları 503, backend yine ayakta.
+- [x] boto3 ile R2 bağlantısı: `app/services/storage.py` (lazy client, S3v4, `region=auto`). `app/core/config.py`'de `R2_*` ayarları + `images_enabled`/`allowed_image_types` property'leri.
+- [x] **Karar: çoklu galeri** → ayrı `ProductImage` modeli (url, r2_key, sort_order, is_cover). Yükleme ucu `POST /products/{id}/images` (multipart, **uuid'li benzersiz ad**: `products/<uuid>.<ext>`), tip (jpeg/png/webp) + boyut (5MB) doğrulaması. İlk görsel otomatik kapak. Ayrıca `DELETE .../images/{id}` ve `PUT .../images/{id}/cover`.
+- [x] DB'ye **yalnızca URL + r2_key** yazılır (görselin kendisi R2'de — mutlak kural). Detay/liste cevabına `images[]` ve `cover_image_url` eklendi; kapak önce sıralanır.
+- [x] **Ürün silinince R2 görselleri de silinir** (`delete_product` içinde, kayıtlar cascade ile gider). Görsel tek tek silinirken kapak silinirse kalan ilk görsel kapak olur.
+- [x] Vitrin: `next/image` ile kapak (kart) + galeri (detay, thumbnail seçimli). Host `.env`'deki `NEXT_PUBLIC_IMAGE_HOST` ile whitelist; yoksa `unoptimized` fallback. Görseli olmayan ürün placeholder gösterir. `npm run build` temiz.
+- [x] Migration: `78143dfaac02_faz_5_product_images_tablosu` üretildi + uygulandı, `alembic check` temiz.
+- [x] **Test**: izole geçici DB + sahte R2 ile 9 senaryo (yükleme/kapak otomasyonu/sıralama/tip-boyut validasyon/kapak değiştir/kapak devral/ürün silince R2 temizliği) — tümü geçti. Gerçek `ecommerce.db` korundu.
+- [ ] İsteğe bağlı: R2 custom domain (`cdn.site.com`) — kullanıcı R2'yi bağlayınca.
+- [ ] İsteğe bağlı: yüklemede görsel küçültme/sıkıştırma (Pillow) — Faz 10 cila.
 
 ### Faz 6 — Sepet ve Sipariş
 Amaç: kullanıcının ürün seçip sipariş oluşturabilmesi. Ödemeden hemen önceki adım.
 
-- [ ] Sepet mantığını kur (başlangıçta frontend state'inde veya basit backend kaydı olarak).
-- [ ] Sipariş oluşturma endpoint'i: sepetteki ürünler, adres, toplam tutar.
-- [ ] Stok kontrolü: sipariş anında yeterli stok var mı bak.
-- [ ] Sipariş durumları tanımla: beklemede, ödendi, hazırlanıyor, kargoda, teslim.
-- [ ] Sipariş henüz "ödendi" olmasın — o, Faz 8'de ödeme onayıyla gelecek.
-- [ ] Kullanıcının kendi siparişlerini görebileceği "siparişlerim" sayfasını yap.
+- [x] **Karar: sepet frontend'de** (React Context + localStorage, `src/lib/cart.tsx`). Backend'de sepet tablosu YOK. SSR/hydration için sepet efekt içinde yüklenir. Navbar'da adet rozeti (`cart-badge.tsx`).
+- [x] Sipariş oluşturma: `POST /orders` (`app/api/routes/orders.py`, auth zorunlu). İstemci yalnızca `variant_id + adet + adres` gönderir; **fiyat ve ürün/varyant adı SUNUCUDA DB'den okunur** (frontend fiyatına güvenilmez — manipülasyon engellendi). Toplam kalemlerden hesaplanıp snapshot. `GET /orders` (kendi siparişleri) + `GET /orders/{id}` (sahiplik kontrolü, başkasınınki 404).
+- [x] Stok kontrolü: **karar: yetersizse TÜM sipariş reddedilir** (409, hangi kalemlerin yetersiz olduğu döner). Aynı varyant birden çok kalemde gelirse adetler toplanıp kontrol edilir (aggregate).
+- [x] Sipariş durumları zaten modelde (`OrderStatus`: pending/paid/preparing/shipped/delivered/cancelled). Vitrinde Türkçe etiket (`lib/orders.ts`).
+- [x] **Karar: stok ödeme onayında düşer** (Faz 8 webhook). Sipariş `pending` oluşur, stok DÜŞMEZ — ödenmeyen sipariş stok kilitlemez. (testle doğrulandı: pending'de stok sabit kaldı.)
+- [x] "Siparişlerim" listesi (`/siparislerim`) + tekil sipariş (`/siparislerim/[id]`). Üyelik zorunlu → giriş yoksa `/giris?next=...`.
+- [x] **Frontend auth** (karar: minimal login+sipariş): `src/lib/auth.tsx` — access token BELLEKTE (localStorage değil), refresh httpOnly cookie ile sessiz oturum (`/auth/refresh`, `credentials:'include'`). `/giris` (login+kayıt sekmeli), `/sepet`, `/odeme` (adres formu → sipariş). `add-to-cart.tsx` gerçek sepete bağlandı.
+- [x] **Test**: izole DB ile 12 senaryo (auth zorunlu / fiyat manipülasyonu reddi / pending'de stok düşmez / yetersiz+tükenmiş+aggregate+olmayan varyant 409 / boş sepet 422 / sahiplik 404) — tümü geçti. Backend uçtan uca (login→sipariş→liste→tekil) + frontend build temiz, tüm sayfalar 200.
+
+> Not (Faz 6): Ödeme adımı henüz YOK — `/odeme` siparişi `pending` oluşturup `/siparislerim/[id]`'ye yönlendirir. İyzico hosted iframe + webhook + stok düşümü Faz 8'de bu akışa eklenecek. Frontend'te otomatik token yenileme interceptor'ı eklenmedi (access token süresi dolunca kullanıcı yeniden login olur); gerekirse Faz 10 cilada eklenir.
 
 ### Faz 7 — Admin Paneli (Refine)
 Amaç: müşterinin siteyi kendi yönetebilmesi. Refine ile CRUD ekranları hızla kurulur.
 
-- [ ] Refine'ı Next.js projesine ekle, Shadcn/Tailwind ile yapılandır.
-- [ ] FastAPI'ye bağlanan data provider'ı yaz (Refine'a "ürünleri şu endpoint'ten al" der).
-- [ ] Ürün yönetimi ekranları: listele, ekle, düzenle, sil + fotoğraf yükleme.
-- [ ] Sipariş yönetimi: siparişleri gör, durum değiştir.
-- [ ] Stok takibi ekranı.
-- [ ] Admin girişini JWT auth'taki "admin" rolüne bağla — sadece admin `/admin`'e girebilsin.
-- [ ] İsteğe bağlı: temel istatistik (günlük satış, sipariş sayısı) — müşteri sever.
+- [x] **Karar: Refine KULLANILMADI.** Refine'ın resmi paketleri Next 16 + React 19 + Tailwind v4 ile peer-dep çakışması/App Router uyumsuzluğu riski taşıyor; CRUD/auth zaten kendi JWT auth + REST API'mizde hazır. Yerine **native admin sayfaları** (mevcut Shadcn/Tailwind + auth client) — sıfır yeni bağımlılık, yığınla tam uyum, tam kontrol.
+- [x] Backend admin uçları: `app/api/routes/admin.py` (`/admin` prefix, **router-level `require_admin`**). Frontend `lib/admin.ts` bunlara bağlanır (data provider yerine doğrudan fetch).
+- [x] Ürün yönetimi: liste (`/admin/urunler`, pasif dahil — `GET /admin/products`), ekle (`POST /products`), düzenle/sil (`PATCH/DELETE /products/{id}`), **görsel yükle/sil** (Faz 5 uçları). Düzenleme ekranı (`/admin/urunler/[id]`) hepsini tek sayfada toplar.
+- [x] Sipariş yönetimi (`/admin/siparisler`): tüm siparişler + durum filtresi (`GET /admin/orders?status=`), **durum değiştir** (`PATCH /admin/orders/{id}/status`). **'paid' admin tarafından ATANAMAZ** (400) — yalnızca İyzico webhook'u (mutlak kural). pending sipariş ödeme beklediği için admin değiştiremez.
+- [x] Stok takibi: varyant ekle (`POST /admin/products/{id}/variants`, SKU benzersiz), stok/fiyat güncelle (`PATCH /admin/variants/{id}`), sil (son varyant silinemez — ürün satılamaz kalmasın). Düzenleme ekranında inline.
+- [x] Admin erişimi 'admin' rolüne bağlı: backend `require_admin` (gerçek koruma), frontend `app/admin/layout.tsx` guard (UX; user→vitrin, misafir→giriş). Sadece admin `/admin`'e girer.
+- [x] **Temel istatistik** (karar gereği): `GET /admin/stats` + dashboard (`/admin`) — ciro (yalnızca paid+ siparişler, pending hariç), toplam/bekleyen/bugünkü sipariş, ürün sayısı.
+- [x] **Test**: izole DB ile 12 senaryo (yetki 401/403, ürün/varyant CRUD, SKU çakışması, stok güncelle, durum geçişi, 'paid' yasağı, durum filtresi, ciro hesabı, son varyant koruması) — tümü geçti. Canlı backend + frontend build temiz, admin sayfaları 200.
 
 ### Faz 8 — Ödeme (İyzico Sandbox)
 Amaç: gerçek ödeme akışını test ortamında kurmak. En kritik ve en dikkat gerektiren faz.
 
-- [ ] İyzico sandbox (test) hesabı aç, API anahtarlarını al (`.env`'e koy).
-- [ ] Ödeme başlatma endpoint'i: sepet/sipariş bilgisinden İyzico ödeme oturumu aç.
-- [ ] Next.js'te İyzico hosted iframe ekranını göster — kart bilgisi sana hiç değmez.
-- [ ] Webhook endpoint'i yaz: İyzico ödeme sonucunu buraya bildirir.
-- [ ] Webhook'ta İyzico imzasını doğrula — sahte bildirimleri ele.
-- [ ] Sipariş onayını SADECE webhook'a göre yap; frontend'in "ödendi" demesine güvenme.
-- [ ] Ödeme onaylanınca: sipariş durumunu "ödendi" yap, stoğu düş.
-- [ ] Test kartlarıyla başarılı/başarısız senaryoları dene.
-- [ ] Ödeme katmanını modüler tut (ileride PayTR'a geçiş kolay olsun).
+- [~] İyzico sandbox hesabı/anahtarları: **kullanıcı yapacak** (dış hesap). Kod hazır; `.env`'e `IYZICO_API_KEY/SECRET_KEY` girilince çalışır (`payments_enabled` deseni, R2'deki gibi). Boşken ödeme uçları 503, backend ayakta.
+- [x] Ödeme başlatma: `POST /payments/{order_id}/init` (`app/api/routes/payments.py`, auth + sahiplik). Tutar/kalemler SUNUCUDAKİ siparişten alınır. İyzico Checkout Form Initialize çağrısı; iframe içeriği + token döner. **Karar: kendi httpx istemcimiz** (resmi SDK yerine — async, az bağımlılık, HMAC-SHA256 imzayı kendimiz üretiyoruz).
+- [x] Next.js İyzico hosted iframe: `IyzicoCheckout` bileşeni (İyzico script'ini DOM'a inject edip çalıştırır), `/odeme` siparişi oluşturup iframe'i gösterir. **Kart bilgisi sisteme hiç değmez** (hosted iframe). `/odeme/sonuc` callback sayfası.
+- [x] Webhook: `POST /payments/webhook` (auth YOK — İyzico çağırır; güvenlik imzayla). Ham gövde alınır, sağlayıcıya doğrulatılır.
+- [x] **Webhook imza doğrulama** (HMAC-SHA256, `X-Iyz-Signature-V3`). **Sahte bildirim test edildi → reddedildi** (sipariş pending kaldı, stok düşmedi). `hmac.compare_digest` (timing-safe).
+- [x] **Sipariş onayı SADECE webhook'la** — frontend "ödendi" diyemez. `/odeme/sonuc` yalnızca bilgi verir; gerçek 'paid' geçişi webhook'ta. (Mutlak kuralın teknik garantisi testle doğrulandı.)
+- [x] Ödeme onaylanınca: sipariş 'paid' + **stok BURADA düşer** (Faz 6'da düşmüyordu). **Idempotent** — tekrarlanan webhook stoğu ikinci kez düşürmez (İyzico retry'larına dayanıklı, testle doğrulandı). Stok `max(0, ...)` ile negatife düşmez.
+- [x] **Test**: izole DB + sahte İyzico ile 7+ senaryo — init/iframe, sahte imza reddi, geçerli+ödendi→paid+stok, idempotency, başarısız ödeme→pending, ödenmiş siparişe tekrar init 409, sahiplik 404. Tümü geçti. (Gerçek test kartı senaryoları kullanıcı sandbox anahtarını girince.)
+- [x] **Ödeme katmanı modüler** (bağlayıcı kural): `app/services/payment/` — soyut `PaymentProvider` arayüzü (`base.py`) + `IyzicoProvider` (`iyzico.py`) + factory (`get_payment_provider`, `PAYMENT_PROVIDER` ile seçim). **PayTR eklemek = base'i implemente eden 1 sınıf + factory'ye 1 satır**; route'lar sağlayıcıdan habersiz.
+- [x] Order modeline `payment_token` + `provider_payment_id` (iz/idempotency); migration `94e5ed192b5d` uygulandı, `alembic check` temiz.
+
+> Not (Faz 8): Webhook için İyzico'nun backend'e public URL'den erişmesi gerekir — yerelde test için ngrok/cloudflared tüneli, prod'da gerçek domain (Faz 9). İyzico'nun callback (tarayıcı dönüşü) ile webhook (sunucu bildirimi) farklı şeylerdir; biz onayı **webhook'a** bağladık (callback sadece kullanıcı UX'i). İyzico panelinde webhook URL'i `{API}/payments/webhook` olarak ayarlanmalı.
 
 ### Faz 9 — Deploy ve Yayın
 Amaç: projeyi internette canlıya almak.

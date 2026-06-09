@@ -8,14 +8,44 @@ from decimal import Decimal
 
 from sqlmodel import Session, select
 
+from app.core.security import hash_password
 from app.db.session import engine
-from app.models import Category, Product, ProductVariant
+from app.models import Category, Product, ProductVariant, User, UserRole
+
+
+def seed_users(session: Session) -> None:
+    """Bir admin ve bir test kullanıcısı ekler (idempotent).
+
+    Admin kayıt (register) yoluyla oluşturulamadığı için ilk admin burada atanır.
+    Şifreler ÖRNEKTİR — production'da bu kullanıcılar oluşturulmaz/şifreler değişir.
+    """
+    if session.exec(select(User)).first():
+        print("Kullanıcı verisi mevcut, atlanıyor.")
+        return
+
+    admin = User(
+        email="admin@example.com",
+        hashed_password=hash_password("admin12345"),
+        full_name="Site Yöneticisi",
+        role=UserRole.admin,
+    )
+    customer = User(
+        email="user@example.com",
+        hashed_password=hash_password("user12345"),
+        full_name="Test Müşteri",
+        role=UserRole.user,
+    )
+    session.add_all([admin, customer])
+    session.commit()
+    print("Kullanıcı seed tamam: admin@example.com / user@example.com (şifreler dev içindir).")
 
 
 def seed() -> None:
     with Session(engine) as session:
+        seed_users(session)
+
         if session.exec(select(Product)).first():
-            print("Veri zaten mevcut, seed atlanıyor.")
+            print("Ürün verisi zaten mevcut, seed atlanıyor.")
             return
 
         tisort = Category(name="Tişört", slug="tisort")

@@ -1,65 +1,77 @@
-"use client";
+import { getCategories, getProducts, type ProductSort } from "@/lib/api";
+import { Navbar } from "@/components/navbar";
+import { ProductCard } from "@/components/product-card";
+import { ProductFilters } from "@/components/product-filters";
+import { Pagination } from "@/components/pagination";
 
-import { useEffect, useState } from "react";
+const PAGE_SIZE = 12;
+const VALID_SORTS: ProductSort[] = ["newest", "price_asc", "price_desc", "name_asc"];
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL;
+/**
+ * Vitrin ana sayfası = ürün listesi. Server Component (SEO + ilk yük hızı):
+ * veri sunucuda çekilir, HTML hazır gelir. Filtreler URL query param'larında;
+ * etkileşimli filtre çubuğu ayrı bir Client Component.
+ */
+export default async function HomePage({
+  searchParams,
+}: {
+  searchParams: Promise<Record<string, string | undefined>>;
+}) {
+  const sp = await searchParams;
 
-type Health = {
-  status: string;
-  service: string;
-  environment: string;
-};
+  const page = Math.max(1, Number(sp.page) || 1);
+  const sort: ProductSort =
+    sp.sort && VALID_SORTS.includes(sp.sort as ProductSort)
+      ? (sp.sort as ProductSort)
+      : "newest";
 
-type State =
-  | { kind: "loading" }
-  | { kind: "ok"; data: Health }
-  | { kind: "error"; message: string };
-
-export default function Home() {
-  const [state, setState] = useState<State>({ kind: "loading" });
-
-  useEffect(() => {
-    if (!API_URL) {
-      setState({ kind: "error", message: "NEXT_PUBLIC_API_URL tanımlı değil (.env.local)." });
-      return;
-    }
-
-    fetch(`${API_URL}/health`)
-      .then((res) => {
-        if (!res.ok) throw new Error(`HTTP ${res.status}`);
-        return res.json() as Promise<Health>;
-      })
-      .then((data) => setState({ kind: "ok", data }))
-      .catch((err) =>
-        setState({ kind: "error", message: err instanceof Error ? err.message : String(err) }),
-      );
-  }, []);
+  // Kategoriler ve ürünler paralel çekilir.
+  const [categories, data] = await Promise.all([
+    getCategories(),
+    getProducts({
+      q: sp.q,
+      category: sp.category,
+      min_price: sp.min_price,
+      max_price: sp.max_price,
+      sort,
+      page,
+      page_size: PAGE_SIZE,
+    }),
+  ]);
 
   return (
-    <main className="flex min-h-full flex-1 flex-col items-center justify-center gap-6 p-8">
-      <h1 className="text-2xl font-semibold">E-Ticaret — Faz 1</h1>
-      <p className="text-sm text-foreground/60">Backend bağlantı testi</p>
+    <>
+      <Navbar />
+      <main className="mx-auto w-full max-w-6xl flex-1 px-4 py-8">
+        <h1 className="mb-6 text-2xl font-semibold tracking-tight">Ürünler</h1>
 
-      <div className="rounded-lg border border-foreground/15 px-6 py-4 text-center">
-        {state.kind === "loading" && <span className="text-foreground/60">Bağlanıyor…</span>}
+        <div className="mb-8">
+          <ProductFilters categories={categories} />
+        </div>
 
-        {state.kind === "ok" && (
-          <div className="space-y-1">
-            <p className="font-medium text-green-600">✓ Backend&apos;e bağlanıldı</p>
-            <p className="text-sm text-foreground/70">
-              {state.data.service} · {state.data.environment}
-            </p>
-          </div>
+        {data.items.length === 0 ? (
+          <p className="py-16 text-center text-foreground/60">
+            Aramanıza uygun ürün bulunamadı.
+          </p>
+        ) : (
+          <>
+            <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-4">
+              {data.items.map((product) => (
+                <ProductCard key={product.id} product={product} />
+              ))}
+            </div>
+
+            <div className="mt-10">
+              <Pagination
+                page={data.page}
+                total={data.total}
+                pageSize={data.page_size}
+                searchParams={sp}
+              />
+            </div>
+          </>
         )}
-
-        {state.kind === "error" && (
-          <div className="space-y-1">
-            <p className="font-medium text-red-600">✗ Bağlantı başarısız</p>
-            <p className="text-sm text-foreground/70">{state.message}</p>
-            <p className="text-xs text-foreground/50">Backend çalışıyor mu? (uvicorn :8000)</p>
-          </div>
-        )}
-      </div>
-    </main>
+      </main>
+    </>
   );
 }

@@ -6,6 +6,7 @@ from sqlmodel import Field, Relationship, SQLModel
 
 if TYPE_CHECKING:
     from app.models.category import Category
+    from app.models.image import ProductImage
     from app.models.order import OrderItem
 
 
@@ -27,6 +28,12 @@ class Product(SQLModel, table=True):
     variants: list["ProductVariant"] = Relationship(
         back_populates="product",
         # Ürün silinince varyantları da silinir (yetim kayıt kalmaz).
+        sa_relationship_kwargs={"cascade": "all, delete-orphan"},
+    )
+    images: list["ProductImage"] = Relationship(
+        back_populates="product",
+        # Ürün silinince görsel KAYITLARI da silinir. R2'deki dosyaların silinmesi
+        # ayrı bir adım (endpoint'te yapılır); DB cascade yalnızca satırları temizler.
         sa_relationship_kwargs={"cascade": "all, delete-orphan"},
     )
 
